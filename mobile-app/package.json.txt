@@ -1,0 +1,14 @@
+{
+  "name": "AutoDiagnosticApp",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "react": "18.2.0",
+    "react-native": "0.72.6"
+  },
+  "scripts": {
+    "android": "react-native run-android",
+    "ios": "react-native run-ios",
+    "start": "react-native start"
+  }
+}

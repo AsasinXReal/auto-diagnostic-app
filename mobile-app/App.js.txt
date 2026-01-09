@@ -1,0 +1,184 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  Alert,
+  Platform,
+} from 'react-native';
+
+const API_URL = 'http://10.0.2.2:8000';
+
+const App = () => {
+  const [isConnected, setIsConnected] = useState(false);
+  const [obdData, setObdData] = useState([]);
+  const [symptoms, setSymptoms] = useState('');
+  const [diagnosis, setDiagnosis] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const simulateOBDData = () => {
+    const simulatedData = [
+      { pid: 'rpm', value: 750, unit: 'RPM' },
+      { pid: 'engine_temp', value: 92, unit: '°C' },
+      { pid: 'dtc', value: ['P0300'], unit: 'codes' },
+    ];
+    setObdData(simulatedData);
+    setIsConnected(true);
+    Alert.alert('Success', 'Date OBD simulate!');
+  };
+
+  const performDiagnosis = async () => {
+    setLoading(true);
+    
+    try {
+      const response = await fetch(`${API_URL}/api/v1/diagnose`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          obd_data: obdData.map(item => ({
+            pid: item.pid,
+            value: item.value,
+            unit: item.unit,
+            timestamp: new Date().toISOString(),
+          })),
+          symptoms: { text: symptoms, audio_url: null, conditions: {} },
+          vehicle: {
+            make: 'VW', model: 'Golf', year: 2018,
+            engine: '1.6 TDI', mileage: 125000
+          },
+        }),
+      });
+
+      const result = await response.json();
+      setDiagnosis(result);
+      Alert.alert('Success', 'Diagnostic generat!');
+      
+    } catch (error) {
+      Alert.alert('Eroare', 'Pornește serverul backend pe portul 8000!');
+      
+      // Date demo
+      setDiagnosis({
+        probable_issues: [
+          { component: "Sistem de aprindere", problem: "Misfire detectat", confidence: 0.85 },
+          { component: "Sistem de admisie", problem: "Amestec sărac", confidence: 0.75 }
+        ],
+        confidence_score: 0.8,
+        urgency_level: "MEDIUM",
+        estimated_repair_cost: { "EUR": 320, "RON": 1568 },
+        recommended_actions: [
+          "Verificați bujiile și bobinele",
+          "Consultați un specialist"
+        ]
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>🚗 AutoDiagnostic AI</Text>
+        <Text style={styles.subtitle}>Diagnostic inteligent auto</Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Conectare OBD-II</Text>
+        <View style={styles.row}>
+          <Text>Status: </Text>
+          <Text style={[styles.status, isConnected ? styles.connected : styles.disconnected]}>
+            {isConnected ? 'CONECTAT' : 'DECONECTAT'}
+          </Text>
+        </View>
+        
+        <TouchableOpacity style={styles.button} onPress={simulateOBDData}>
+          <Text style={styles.buttonText}>🔧 Simulează date OBD</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Simptome</Text>
+        <TextInput
+          style={styles.textInput}
+          placeholder="ex: tremură la ralanti..."
+          multiline
+          value={symptoms}
+          onChangeText={setSymptoms}
+        />
+      </View>
+
+      <TouchableOpacity style={[styles.button, styles.buttonSuccess]} onPress={performDiagnosis}>
+        <Text style={styles.buttonText}>
+          {loading ? '🔄 Analiză...' : '🔍 Diagnostic AI'}
+        </Text>
+      </TouchableOpacity>
+
+      {diagnosis && (
+        <View style={[styles.card, styles.resultsCard]}>
+          <Text style={styles.resultsTitle}>📋 Rezultate</Text>
+          
+          <View style={styles.urgencyBadge}>
+            <Text style={styles.urgencyText}>Urgență: {diagnosis.urgency_level}</Text>
+          </View>
+          
+          <Text style={styles.confidence}>
+            Încredere: {(diagnosis.confidence_score * 100).toFixed(1)}%
+          </Text>
+          
+          <Text style={styles.sectionTitle}>🔧 Probleme:</Text>
+          {diagnosis.probable_issues.map((issue, index) => (
+            <View key={index} style={styles.issueItem}>
+              <Text style={styles.issueComponent}>{issue.component}</Text>
+              <Text style={styles.issueProblem}>{issue.problem}</Text>
+            </View>
+          ))}
+          
+          <Text style={styles.sectionTitle}>💰 Cost:</Text>
+          <View style={styles.costContainer}>
+            <Text style={styles.costItem}>{diagnosis.estimated_repair_cost.RON} RON</Text>
+            <Text style={styles.costItem}>{diagnosis.estimated_repair_cost.EUR} EUR</Text>
+          </View>
+        </View>
+      )}
+
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>🚀 AutoDiagnostic AI v2.0</Text>
+      </View>
+    </ScrollView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f5f5f5', padding: 16 },
+  header: { alignItems: 'center', marginBottom: 24, paddingTop: 40 },
+  title: { fontSize: 28, fontWeight: 'bold', color: '#2c3e50' },
+  subtitle: { fontSize: 14, color: '#7f8c8d', marginTop: 4 },
+  card: { backgroundColor: 'white', borderRadius: 12, padding: 20, marginBottom: 16, elevation: 3 },
+  cardTitle: { fontSize: 18, fontWeight: '600', marginBottom: 12, color: '#2c3e50' },
+  row: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  status: { fontWeight: 'bold', marginLeft: 8, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, fontSize: 12 },
+  connected: { backgroundColor: '#d4edda', color: '#155724' },
+  disconnected: { backgroundColor: '#f8d7da', color: '#721c24' },
+  button: { padding: 16, borderRadius: 8, alignItems: 'center', marginVertical: 8, backgroundColor: '#3498db' },
+  buttonSuccess: { backgroundColor: '#27ae60' },
+  buttonText: { color: 'white', fontWeight: '600', fontSize: 16 },
+  textInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16, minHeight: 100 },
+  resultsCard: { backgroundColor: '#fff9e6', borderWidth: 2, borderColor: '#f1c40f' },
+  resultsTitle: { fontSize: 22, fontWeight: 'bold', color: '#2c3e50', marginBottom: 16, textAlign: 'center' },
+  urgencyBadge: { backgroundColor: '#f1c40f', padding: 8, borderRadius: 20, alignSelf: 'flex-start', marginBottom: 12 },
+  urgencyText: { fontWeight: 'bold', color: '#7d6608' },
+  confidence: { fontSize: 16, color: '#27ae60', fontWeight: '600', marginBottom: 16 },
+  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#2c3e50', marginTop: 16, marginBottom: 8 },
+  issueItem: { backgroundColor: '#f8f9fa', padding: 12, borderRadius: 8, marginBottom: 8, borderLeftWidth: 4, borderLeftColor: '#3498db' },
+  issueComponent: { fontWeight: 'bold', fontSize: 16, color: '#2c3e50' },
+  issueProblem: { color: '#7f8c8d', marginVertical: 4 },
+  costContainer: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: '#e8f4fc', padding: 16, borderRadius: 8 },
+  costItem: { fontSize: 18, fontWeight: 'bold', color: '#2980b9' },
+  footer: { alignItems: 'center', marginTop: 24, marginBottom: 40, padding: 16 },
+  footerText: { color: '#7f8c8d', textAlign: 'center' },
+});
+
+export default App;
