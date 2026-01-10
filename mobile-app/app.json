@@ -1,0 +1,73 @@
+{
+  "expo": {
+    "name": "AutoDiagnostic Pro",
+    "slug": "autodiagnostic-pro",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "Această aplicație necesită Bluetooth pentru a se conecta la adaptorul OBD-II al mașinii",
+        "NSBluetoothPeripheralUsageDescription": "Această aplicație necesită Bluetooth pentru a se conecta la adaptorul OBD-II al mașinii",
+        "UIBackgroundModes": ["bluetooth-central"]
+      },
+      "bundleIdentifier": "com.autodiagnostic.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN", 
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_ADVERTISE"
+      ],
+      "usesPermissions": [
+        {
+          "name": "android.permission.BLUETOOTH",
+          "maxSdkVersion": 30
+        },
+        {
+          "name": "android.permission.BLUETOOTH_ADMIN",
+          "maxSdkVersion": 30
+        }
+      ],
+      "package": "com.autodiagnostic.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 24,
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "buildToolsVersion": "34.0.0"
+          },
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ]
+    ],
+    "newArchEnabled": false
+  }
+}

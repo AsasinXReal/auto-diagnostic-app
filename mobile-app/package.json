@@ -1,0 +1,22 @@
+{
+  "name": "AutoDiagnosticApp",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "expo": "^54.0.31",
+    "expo-bluetooth": "^0.0.0",
+    "expo-build-properties": "~1.0.10",
+    "expo-dev-client": "~6.0.20",
+    "expo-permissions": "^14.4.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-ble-manager": "^12.4.3",
+    "react-native-ble-plx": "^3.5.0",
+    "react-native-permissions": "^5.4.4"
+  },
+  "scripts": {
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "start": "react-native start"
+  }
+}
