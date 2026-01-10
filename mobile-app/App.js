@@ -1,754 +1,560 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  TextInput,
-  Alert,
-  Platform,
+import { 
+  View, Text, StyleSheet, Alert, ScrollView,
+  TextInput, TouchableOpacity, ActivityIndicator, SafeAreaView,
+  Platform, Linking, PermissionsAndroid
 } from 'react-native';
-import * as Bluetooth from 'expo-bluetooth';
+import axios from 'axios';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://10.0.2.2:8000'; // Pentru Android emulator
+// === CONFIGURAȚIE ===
+const MOD_DEZVOLTARE = false; // TRUE pentru Development Build cu Bluetooth real
 
-const App = () => {
-  const [isConnected, setIsConnected] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
-  const [obdDevices, setObdDevices] = useState([]);
-  const [connectedDevice, setConnectedDevice] = useState(null);
-  const [obdData, setObdData] = useState([]);
-  const [symptoms, setSymptoms] = useState('');
-  const [diagnosis, setDiagnosis] = useState(null);
-  const [loading, setLoading] = useState(false);
+// Import conditional pentru react-native-ble-plx
+let BleManager = null;
+let manager = null;
 
-  // Verifică permisiuni Bluetooth la pornire
+if (MOD_DEZVOLTARE) {
+  try {
+    BleManager = require('react-native-ble-plx').BleManager;
+    manager = new BleManager();
+    console.log('✅ react-native-ble-plx încărcat pentru Development Build');
+  } catch (error) {
+    console.warn('❌ react-native-ble-plx nu s-a putut încărca:', error);
+  }
+}
+
+export default function AplicatieDiagnostic() {
+  // === STATE-URI ===
+  const [dispozitive, setDispozitive] = useState([]);
+  const [conectat, setConectat] = useState(false);
+  const [scanare, setScanare] = useState(false);
+  const [dispozitivCurent, setDispozitivCurent] = useState(null);
+  const [dateOBD, setDateOBD] = useState({});
+  const [diagnostic, setDiagnostic] = useState(null);
+  const [incarcare, setIncarcare] = useState(false);
+  const [stareBluetooth, setStareBluetooth] = useState(
+    MOD_DEZVOLTARE ? 'Initializare...' : '🔧 Mod Simulare'
+  );
+  
+  // Informații utilizator
+  const [simptome, setSimptome] = useState('');
+  const [marca, setMarca] = useState('');
+  const [model, setModel] = useState('');
+  const [an, setAn] = useState('');
+  const [kilometraj, setKilometraj] = useState('');
+
+  // === Efect pentru inițializare ===
   useEffect(() => {
-    requestBluetoothPermissions();
+    if (MOD_DEZVOLTARE && manager) {
+      const subscription = manager.onStateChange((stare) => {
+        console.log('📱 Stare Bluetooth:', stare);
+        setStareBluetooth(stare);
+      }, true);
+      
+      return () => subscription.remove();
+    } else {
+      setStareBluetooth('🔧 Mod Simulare Activ');
+    }
   }, []);
 
-  const requestBluetoothPermissions = async () => {
-    try {
-      const { status } = await Bluetooth.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Permisiune necesară',
-          'Aplicația are nevoie de permisiunea Bluetooth pentru a se conecta la adaptorul OBD-II'
-        );
-      }
-    } catch (error) {
-      console.error('Eroare permisiuni Bluetooth:', error);
-    }
-  };
-
-  // Scanează dispozitive Bluetooth
-  const scanForOBDDevices = async () => {
-    try {
-      setIsScanning(true);
-      setObdDevices([]);
-      
-      const isAvailable = await Bluetooth.isAvailableAsync();
-      if (!isAvailable) {
-        Alert.alert('Bluetooth indisponibil', 'Activează Bluetooth pe dispozitiv');
-        setIsScanning(false);
-        return;
-      }
-
-      // Începe scanarea
-      const subscription = Bluetooth.addDevicesDiscoveredListener((event) => {
-        const devices = event.devices;
-        
-        // Filtrează doar dispozitivele OBD (conțin "OBD", "ELM327", "Vgate", etc.)
-        const obdDevicesFound = devices.filter(device => 
-          device.name && (
-            device.name.toLowerCase().includes('obd') ||
-            device.name.toLowerCase().includes('elm327') ||
-            device.name.toLowerCase().includes('vgate') ||
-            device.name.toLowerCase().includes('car') ||
-            device.name.match(/obd|elm|bluetooth.*adapter/i)
-          )
-        );
-        
-        setObdDevices(obdDevicesFound);
-      });
-
-      await Bluetooth.startDiscoveryAsync();
-      
-      // Opțional: oprește scanarea după 10 secunde
-      setTimeout(async () => {
-        await Bluetooth.stopDiscoveryAsync();
-        subscription.remove();
-        setIsScanning(false);
-        
-        if (obdDevices.length === 0) {
-          Alert.alert(
-            'Niciun dispozitiv OBD găsit',
-            'Asigură-te că:\n1. Adaptorul OBD-II e conectat la mașină\n2. Bluetooth e activat\n3. Mașina are contactul pornit'
-          );
-        }
-      }, 10000);
-
-    } catch (error) {
-      console.error('Eroare scanare Bluetooth:', error);
-      Alert.alert('Eroare', 'Nu s-a putut scana pentru dispozitive Bluetooth');
-      setIsScanning(false);
-    }
-  };
-
-  // Conectează la un dispozitiv OBD
-  const connectToOBDDevice = async (device) => {
-    try {
-      setLoading(true);
-      
-      // Simulare conexiune pentru demo
-      // În versiunea reală, aici s-ar folosi Bluetooth.connectToDeviceAsync()
+  // === SCANARE DISPOZITIVE ===
+  const scaneazaDispozitiveOBD = async () => {
+    if (!MOD_DEZVOLTARE) {
+      // === MOD SIMULARE (Expo Go) ===
+      setScanare(true);
       
       setTimeout(() => {
-        setConnectedDevice(device);
-        setIsConnected(true);
-        setLoading(false);
-        
-        // Simulează date OBD citite
-        simulateLiveOBDData();
+        setDispozitive([
+          { 
+            id: 'sim-obd-001', 
+            name: 'OBD2 ELM327 Bluetooth', 
+            rssi: -58,
+            details: 'Dispozitiv simulat pentru testare'
+          },
+          { 
+            id: 'sim-obd-002', 
+            name: 'Vgate iCar Pro V2.0', 
+            rssi: -62,
+            details: 'Simulare adaptor OBD2'
+          },
+          { 
+            id: 'sim-obd-003', 
+            name: 'OBDLink MX+ Simulator', 
+            rssi: -55,
+            details: 'Simulare pentru diagnostic AI'
+          }
+        ]);
+        setScanare(false);
         
         Alert.alert(
-          '✅ Conectat cu succes!',
-          `Conectat la: ${device.name}\n\n` +
-          `Sistemul citește date în timp real de la mașină.`
+          '🔍 Dispozitive simulate găsite',
+          'Acestea sunt dispozitive simulate pentru testarea AI-ului.\n\nPentru Bluetooth real:\n1. Setează MOD_DEZVOLTARE = true\n2. Rulează: npx expo run:android',
+          [{ text: 'OK' }]
         );
       }, 1500);
+      
+      return;
+    }
+    
+    // === MOD DEVELOPMENT BUILD (Bluetooth real) ===
+    if (!manager) {
+      Alert.alert('Eroare', 'Manager Bluetooth neinițializat');
+      return;
+    }
+    
+    setScanare(true);
+    setDispozitive([]);
+    
+    if (Platform.OS === 'android') {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      );
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+        Alert.alert('Permisiune necesară', 'Ai nevoie de permisiunea Locație pentru Bluetooth.');
+        setScanare(false);
+        return;
+      }
+    }
+    
+    manager.startDeviceScan(null, null, (error, device) => {
+      if (error) {
+        console.error('Eroare scanare:', error);
+        setScanare(false);
+        return;
+      }
+      
+      if (device.name && device.name.includes('OBD')) {
+        const dispozitivNou = {
+          id: device.id,
+          name: device.name,
+          rssi: device.rssi,
+          details: `Dispozitiv real - ${device.id.substring(0, 8)}`
+        };
+        
+        setDispozitive(prev => [...prev, dispozitivNou]);
+      }
+    });
+    
+    setTimeout(() => {
+      manager.stopDeviceScan();
+      setScanare(false);
+    }, 10000);
+  };
 
+  // === CONECTARE ===
+  const conecteazaLaOBD = async (dispozitiv) => {
+    setIncarcare(true);
+    
+    if (!MOD_DEZVOLTARE || dispozitiv.id.includes('sim-')) {
+      setTimeout(() => {
+        setDispozitivCurent(dispozitiv);
+        setConectat(true);
+        setIncarcare(false);
+        
+        const dateSimulate = {
+          rpm: 2450,
+          viteza: 0,
+          temperatura: 92,
+          voltaj: 13.8,
+          consum: 8.5,
+          coduri: 'P0300,P0171',
+          presiune_combustibil: 3.2,
+          sarcina_motor: 65,
+          avans_aprindere: 14.2,
+          timp_injectie: 3.1
+        };
+        
+        setDateOBD(dateSimulate);
+        
+        Alert.alert(
+          '✅ Conectat (Simulat)',
+          `Conectat la: ${dispozitiv.name}\n\nDate simulate pentru testare AI.`,
+          [{ text: 'OK' }]
+        );
+        
+        const interval = setInterval(() => {
+          if (!conectat) {
+            clearInterval(interval);
+            return;
+          }
+          
+          setDateOBD(prev => ({
+            ...prev,
+            rpm: prev.rpm + (Math.random() * 100 - 50),
+            temperatura: prev.temperatura + (Math.random() * 2 - 1),
+            voltaj: (parseFloat(prev.voltaj) + (Math.random() * 0.2 - 0.1)).toFixed(2)
+          }));
+        }, 3000);
+      }, 1000);
+      
+      return;
+    }
+    
+    // === CONEXIUNE REALĂ ===
+    try {
+      const deviceConnected = await manager.connectToDevice(dispozitiv.id);
+      await deviceConnected.discoverAllServicesAndCharacteristics();
+      
+      setDispozitivCurent(dispozitiv);
+      setConectat(true);
+      setIncarcare(false);
+      
+      Alert.alert('✅ Conectat real!', `Conectat la ${dispozitiv.name}`);
+      
     } catch (error) {
-      console.error('Eroare conectare:', error);
-      Alert.alert('Eroare conectare', 'Nu s-a putut conecta la dispozitivul OBD');
-      setLoading(false);
+      console.error('Eroare conectare reală:', error);
+      Alert.alert('❌ Eroare conectare', 'Nu s-a putut conecta la dispozitiv.');
+      setIncarcare(false);
     }
   };
 
-  // Simulează date OBD în timp real (în versiunea reală, aici s-ar citi de la Bluetooth)
-  const simulateLiveOBDData = () => {
-    const simulatedData = [
-      { pid: 'RPM', value: Math.floor(Math.random() * 1000) + 600, unit: 'RPM', normal: '600-850' },
-      { pid: 'Temp motor', value: Math.floor(Math.random() * 30) + 80, unit: '°C', normal: '85-105' },
-      { pid: 'Viteză', value: 0, unit: 'km/h', normal: '0' },
-      { pid: 'Tensiune baterie', value: (Math.random() * 1 + 13).toFixed(1), unit: 'V', normal: '13.5-14.5' },
-      { pid: 'Consum instant', value: (Math.random() * 5 + 5).toFixed(1), unit: 'L/100km', normal: '5-10' },
-    ];
-    
-    setObdData(simulatedData);
-    
-    // Simulează actualizare continuă
-    const interval = setInterval(() => {
-      if (isConnected) {
-        const updatedData = simulatedData.map(item => ({
-          ...item,
-          value: item.pid === 'RPM' 
-            ? Math.floor(Math.random() * 100) + 700 
-            : item.value
-        }));
-        setObdData(updatedData);
-      } else {
-        clearInterval(interval);
-      }
-    }, 3000);
-  };
-
-  // Simulare pentru demo (când nu ai adaptor real)
-  const simulateOBDForDemo = () => {
-    const demoDevices = [
-      { name: 'OBD-II ELM327 v2.1', id: 'demo-1', manufacturerData: 'ELM Electronics' },
-      { name: 'Vgate iCar Pro Bluetooth', id: 'demo-2', manufacturerData: 'Vgate' },
-      { name: 'OBDLink LX', id: 'demo-3', manufacturerData: 'ScanTool' },
-    ];
-    
-    setObdDevices(demoDevices);
-    Alert.alert(
-      '🔍 Dispozitive OBD simulate',
-      'În versiunea reală, aici ar apărea dispozitivele Bluetooth OBD detectate.\n\n' +
-      'Pentru test, selectează un dispozitiv din listă.'
-    );
-  };
-
-  // Trimite diagnostic la serverul AI
-  const performDiagnosis = async () => {
-    if (!isConnected && !symptoms.trim()) {
-      Alert.alert('⚠️ Atenție', 'Conectează-te la OBD sau descrie simptomele!');
+  // === DIAGNOSTIC AI ===
+  const trimiteLaAI = async () => {
+    if (!simptome.trim()) {
+      Alert.alert('⚠️ Atenție', 'Te rog descrie simptomele mașinii!');
       return;
     }
 
-    setLoading(true);
+    setIncarcare(true);
     
     try {
-      // Pregătește datele pentru trimitere la server
-      const diagnosticData = {
-        obd_data: obdData.map(item => ({
-          pid: item.pid,
-          value: typeof item.value === 'string' ? parseFloat(item.value) || 0 : item.value,
-          unit: item.unit,
-          timestamp: new Date().toISOString(),
-        })),
-        symptoms: { 
-          text: symptoms, 
-          audio_url: null, 
-          conditions: {
-            engine_on: true,
-            cold_start: obdData.find(d => d.pid === 'Temp motor')?.value < 85,
-            moving: false
-          }
-        },
-        vehicle: {
-          make: 'Auto-detectat', 
-          model: 'Via OBD', 
-          year: new Date().getFullYear() - 2,
-          engine: 'Necunoscut', 
-          mileage: 0,
-          vin: 'SCAN_FROM_OBD'
-        },
+      const dateDiagnostic = {
+        date_obd: [
+          { pid: 'rpm', valoare: dateOBD.rpm || 0, unitate: 'RPM' },
+          { pid: 'viteza', valoare: dateOBD.viteza || 0, unitate: 'km/h' },
+          { pid: 'temperatura', valoare: dateOBD.temperatura || 85, unitate: '°C' },
+          { pid: 'voltaj', valoare: parseFloat(dateOBD.voltaj) || 12.4, unitate: 'V' },
+          { pid: 'coduri', valoare: dateOBD.coduri || 'P0000', unitate: 'DTC' }
+        ],
+        simptome: { text: simptome },
+        vehicul: {
+          marca: marca || 'Necunoscută',
+          model: model || 'Necunoscut',
+          an: parseInt(an) || 2015,
+          kilometraj: parseInt(kilometraj) || 100000
+        }
       };
 
-      const response = await fetch(`${API_URL}/api/v1/diagnose`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(diagnosticData),
-      });
-
-      if (!response.ok) throw new Error('Server error');
-
-      const result = await response.json();
-      setDiagnosis(result);
+      const raspuns = await axios.post('http://192.168.0.195:8000/api/v1/diagnostic', dateDiagnostic);
+      
+      setDiagnostic(raspuns.data);
+      await AsyncStorage.setItem('ultim_diagnostic', JSON.stringify(raspuns.data));
       
       Alert.alert(
-        '🎉 Diagnostic complet!',
-        `AI-ul a analizat ${obdData.length} parametri și simptomele tale.\n` +
-        `Încredere: ${(result.confidence_score * 100).toFixed(1)}%`
+        '✅ Diagnostic Complet',
+        `Problemă: ${raspuns.data.probleme_probabile[0]?.descriere || 'Necunoscută'}\nÎncredere: ${(raspuns.data.scor_incredere * 100).toFixed(0)}%`,
+        [{ text: 'OK' }]
       );
       
-    } catch (error) {
-      console.error('Eroare diagnostic:', error);
+    } catch (eroare) {
+      console.error('❌ Eroare backend:', eroare);
       
-      // Date demo dacă serverul nu răspunde
-      const mockIssues = [
-        { 
-          component: "Sistem de aprindere", 
-          problem: "Misfire cilindru #3 detectat", 
-          confidence: 0.87,
-          dtc_codes: ["P0303"]
-        },
-        { 
-          component: "Senzor oxigen (Bank 1)", 
-          problem: "Răspuns lent / învechit", 
-          confidence: 0.72,
-          dtc_codes: ["P0130"]
-        },
-        { 
-          component: "Sistem admisie", 
-          problem: "Posibilă fuite vacuum", 
-          confidence: 0.65 
-        }
-      ];
+      const diagnosticLocal = {
+        probleme_probabile: [{
+          componenta: "Sistem de diagnostic",
+          descriere: simptome.toLowerCase().includes('tremur') 
+            ? "Probabil bujii sau bobine de aprindere defecte" 
+            : "Necesită verificare profesională",
+          probabilitate: 0.7
+        }],
+        scor_incredere: 0.65,
+        nivel_urgenta: "MEDIU",
+        cost_reparatie_estimat: { EUR: 120, RON: 600 },
+        actiuni_recomandate: ["Verifică la mecanic"]
+      };
       
-      // Determină urgența bazată pe datele OBD
-      const rpm = obdData.find(d => d.pid === 'RPM')?.value || 750;
-      const temp = obdData.find(d => d.pid === 'Temp motor')?.value || 92;
-      
-      let urgency = "LOW";
-      if (rpm < 500 || rpm > 3000) urgency = "HIGH";
-      else if (temp > 110 || temp < 70) urgency = "MEDIUM";
-      
-      setDiagnosis({
-        probable_issues: mockIssues,
-        confidence_score: 0.82,
-        urgency_level: urgency,
-        estimated_repair_cost: { 
-          "EUR": 280 + Math.floor(Math.random() * 200), 
-          "RON": Math.round((280 + Math.random() * 200) * 4.9) 
-        },
-        recommended_actions: [
-          "Verificați bujia și bobina cilindrului #3",
-          "Testați senzorul oxigen cu osciloscop",
-          "Verificați toate mufele și conductele de vacuum",
-          "Consultați un specialist pentru diagnostic detaliat"
-        ]
-      });
-      
-      Alert.alert(
-        '📡 Modul demo activat',
-        'Serverul backend nu e disponibil. Afișez date simulate bazate pe:\n' +
-        `• ${obdData.length} parametri OBD\n` +
-        `• Simptomele introduse\n\n` +
-        'Pentru diagnostic real, asigură-te că serverul rulează pe portul 8000.'
-      );
+      setDiagnostic(diagnosticLocal);
+      Alert.alert('⚠️ Diagnostic Local', 'Folosind AI integrat în aplicație.');
     } finally {
-      setLoading(false);
+      setIncarcare(false);
     }
   };
 
-  // Deconectare OBD
-  const disconnectOBD = () => {
-    setConnectedDevice(null);
-    setIsConnected(false);
-    setObdData([]);
-    setObdDevices([]);
-    Alert.alert('🔌 Deconectat', 'Conexiunea OBD a fost închisă.');
+  const deconecteaza = () => {
+    if (MOD_DEZVOLTARE && manager && dispozitivCurent) {
+      manager.cancelDeviceConnection(dispozitivCurent.id);
+    }
+    setConectat(false);
+    setDispozitivCurent(null);
+    setDateOBD({});
   };
 
+  // === INTERFAȚA ===
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>🚗 AutoDiagnostic AI Pro</Text>
-        <Text style={styles.subtitle}>Diagnostic real-time cu OBD-II</Text>
-      </View>
-
-      {/* Status OBD */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>🔌 Conexiune OBD-II Real-time</Text>
-        
-        <View style={styles.row}>
-          <Text>Status: </Text>
-          <Text style={[styles.status, isConnected ? styles.connected : styles.disconnected]}>
-            {isConnected ? 'CONECTAT LA MAȘINĂ' : 'DECONECTAT'}
+    <SafeAreaView style={styles.container}>
+      <ScrollView>
+        {/* HEADER */}
+        <View style={styles.header}>
+          <Icon name="car-wrench" size={48} color="#3B82F6" />
+          <Text style={styles.titlu}>🤖 AI Auto Diagnostic</Text>
+          <Text style={styles.subtitlu}>
+            {MOD_DEZVOLTARE ? 'Development Build - Bluetooth Real' : 'Expo Go - Mod Simulare'}
           </Text>
-        </View>
-        
-        {connectedDevice && (
-          <Text style={styles.deviceInfo}>
-            📱 Dispozitiv: {connectedDevice.name}
-          </Text>
-        )}
-
-        {!isConnected ? (
-          <>
-            <TouchableOpacity 
-              style={[styles.button, isScanning && styles.buttonDisabled]} 
-              onPress={scanForOBDDevices}
-              disabled={isScanning}
-            >
-              <Text style={styles.buttonText}>
-                {isScanning ? '🔍 Scanare în curs...' : '🔍 Scanează dispozitive OBD'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.button, styles.buttonSecondary]} 
-              onPress={simulateOBDForDemo}
-            >
-              <Text style={styles.buttonText}>🎮 Mod demo (fără OBD real)</Text>
-            </TouchableOpacity>
-
-            {/* Listă dispozitive găsite */}
-            {obdDevices.length > 0 && (
-              <View style={styles.devicesList}>
-                <Text style={styles.devicesTitle}>Dispozitive OBD găsite:</Text>
-                {obdDevices.map((device, index) => (
-                  <TouchableOpacity
-                    key={device.id || index}
-                    style={styles.deviceItem}
-                    onPress={() => connectToOBDDevice(device)}
-                  >
-                    <Text style={styles.deviceName}>{device.name}</Text>
-                    <Text style={styles.deviceType}>Bluetooth OBD-II</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </>
-        ) : (
-          <TouchableOpacity 
-            style={[styles.button, styles.buttonDanger]} 
-            onPress={disconnectOBD}
-          >
-            <Text style={styles.buttonText}>🔌 Deconectează de la OBD</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Date OBD live */}
-      {isConnected && obdData.length > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>📊 Date în timp real din mașină</Text>
-          <View style={styles.obdDataContainer}>
-            {obdData.map((item, index) => (
-              <View key={index} style={styles.obdDataItem}>
-                <Text style={styles.obdDataParam}>{item.pid}</Text>
-                <Text style={styles.obdDataValue}>{item.value} {item.unit}</Text>
-                <Text style={styles.obdDataNormal}>normal: {item.normal}</Text>
-              </View>
-            ))}
-          </View>
-          <Text style={styles.hint}>
-            💡 Datele se actualizează automat de la adaptorul OBD-II
-          </Text>
-        </View>
-      )}
-
-      {/* Simptome */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>
-          📝 {isConnected ? 'Simptome suplimentare' : 'Descrie simptomele'}
-        </Text>
-        <TextInput
-          style={styles.textInput}
-          placeholder={
-            isConnected 
-              ? "ex: Mai sunt și alte probleme pe care le-ai observat..."
-              : "ex: Mașina tremură, consumă mult, face zgomot, nu pornește ușor..."
-          }
-          multiline
-          numberOfLines={4}
-          value={symptoms}
-          onChangeText={setSymptoms}
-        />
-        {isConnected && (
-          <Text style={styles.hint}>
-            💡 AI-ul va analiza și datele OBD ({obdData.length} parametri) și simptomele tale
-          </Text>
-        )}
-      </View>
-
-      {/* Diagnostic Button */}
-      <TouchableOpacity 
-        style={[styles.button, styles.buttonSuccess, loading && styles.buttonDisabled]} 
-        onPress={performDiagnosis}
-        disabled={loading}
-      >
-        <Text style={styles.buttonText}>
-          {loading ? '🧠 AI analizează datele...' : '🔍 DIAGNOSTIC AI AVANSAT'}
-        </Text>
-      </TouchableOpacity>
-
-      {/* Rezultate */}
-      {diagnosis && (
-        <View style={[styles.card, styles.resultsCard]}>
-          <Text style={styles.resultsTitle}>📋 DIAGNOSTIC COMPLET</Text>
           
-          <View style={[styles.urgencyBadge, 
-            diagnosis.urgency_level === 'HIGH' ? styles.urgencyHigh :
-            diagnosis.urgency_level === 'MEDIUM' ? styles.urgencyMedium :
-            styles.urgencyLow
+          <View style={[
+            styles.stareContainer, 
+            MOD_DEZVOLTARE 
+              ? { backgroundColor: '#10B98120' } 
+              : { backgroundColor: '#8B5CF620' }
           ]}>
-            <Text style={styles.urgencyText}>
-              {diagnosis.urgency_level === 'HIGH' ? '⚠️ URGENT' : 
-               diagnosis.urgency_level === 'MEDIUM' ? '🔶 ATENȚIE' : '✅ NORMAL'}
+            <Text style={[
+              styles.stareText,
+              MOD_DEZVOLTARE ? { color: '#10B981' } : { color: '#8B5CF6' }
+            ]}>
+              {MOD_DEZVOLTARE ? '🚀 Development Build' : '🔧 Expo Go (Simulare)'}
             </Text>
+            <Text style={styles.stareDetalii}>{stareBluetooth}</Text>
           </View>
-          
-          <Text style={styles.confidence}>
-            🎯 Încredere AI: {(diagnosis.confidence_score * 100).toFixed(1)}%
-            {isConnected && ` (bazat pe ${obdData.length} parametri)`}
+        </View>
+
+        {/* SECȚIUNE CONEXIUNE */}
+        <View style={styles.sectiune}>
+          <Text style={styles.sectiuneTitlu}>
+            {MOD_DEZVOLTARE ? '📱 Conexiune OBD2 Reală' : '🔧 Mod Simulare OBD2'}
           </Text>
           
-          <Text style={styles.sectionTitle}>🔧 Probleme identificate:</Text>
-          {diagnosis.probable_issues.map((issue, index) => (
-            <View key={index} style={styles.issueItem}>
-              <View style={styles.issueHeader}>
-                <Text style={styles.issueComponent}>{issue.component}</Text>
-                <Text style={styles.issueConfidenceBadge}>
-                  {(issue.confidence * 100).toFixed(0)}%
+          <TouchableOpacity
+            style={[styles.butonPrincipal, scanare && styles.butonActiv]}
+            onPress={scaneazaDispozitiveOBD}
+            disabled={scanare}
+          >
+            {scanare ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Icon name="bluetooth-search" size={24} color="#fff" />
+                <Text style={styles.butonText}>
+                  {MOD_DEZVOLTARE ? 'SCANEAZĂ OBD2 REAL' : 'PORNEȘTE SIMULAREA'}
                 </Text>
-              </View>
-              <Text style={styles.issueProblem}>{issue.problem}</Text>
-              {issue.dtc_codes && (
-                <Text style={styles.issueDTC}>
-                  Coduri: {issue.dtc_codes.join(', ')}
-                </Text>
-              )}
-            </View>
-          ))}
+              </>
+            )}
+          </TouchableOpacity>
           
-          <Text style={styles.sectionTitle}>💰 Estimare cost reparație:</Text>
-          <View style={styles.costContainer}>
-            <View style={styles.costItem}>
-              <Text style={styles.costValue}>{diagnosis.estimated_repair_cost?.RON || 'N/A'} RON</Text>
-              <Text style={styles.costLabel}>România</Text>
+          {!MOD_DEZVOLTARE && (
+            <View style={styles.notaContainer}>
+              <Text style={styles.notaText}>
+                💡 <Text style={{ fontWeight: 'bold' }}>Pentru Bluetooth real:</Text>
+              </Text>
+              <Text style={styles.notaText}>1. Schimbă MOD_DEZVOLTARE = true în cod</Text>
+              <Text style={styles.notaText}>2. Rulează: <Text style={{ fontFamily: 'monospace' }}>npx expo run:android</Text></Text>
+              <Text style={styles.notaText}>3. Conectează adaptorul OBD2 Bluetooth</Text>
             </View>
-            <View style={styles.costItem}>
-              <Text style={styles.costValue}>{diagnosis.estimated_repair_cost?.EUR || 'N/A'} EUR</Text>
-              <Text style={styles.costLabel}>Europa</Text>
+          )}
+          
+          {/* LISTA DISPOZITIVE */}
+          {dispozitive.length > 0 && (
+            <View style={styles.listaContainer}>
+              <Text style={styles.listaTitlu}>Dispozitive găsite:</Text>
+              {dispozitive.map((d) => (
+                <TouchableOpacity
+                  key={d.id}
+                  style={styles.dispozitivItem}
+                  onPress={() => conecteazaLaOBD(d)}
+                  disabled={incarcare}
+                >
+                  <Icon name="bluetooth" size={22} color="#3B82F6" />
+                  <View style={styles.dispozitivInfo}>
+                    <Text style={styles.dispozitivNume}>{d.name}</Text>
+                    <Text style={styles.dispozitivDetalii}>{d.details}</Text>
+                  </View>
+                  {incarcare ? (
+                    <ActivityIndicator size="small" color="#3B82F6" />
+                  ) : (
+                    <Icon name="chevron-right" size={22} color="#9CA3AF" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          
+          {/* CONECTAT */}
+          {conectat && (
+            <View style={styles.conectatContainer}>
+              <View style={styles.conectatHeader}>
+                <Icon name="bluetooth-connected" size={28} color="#10B981" />
+                <View style={styles.conectatInfo}>
+                  <Text style={styles.conectatTitlu}>✅ CONECTAT</Text>
+                  <Text style={styles.conectatNume}>{dispozitivCurent?.name}</Text>
+                </View>
+              </View>
+              
+              {/* DATE LIVE */}
+              {Object.keys(dateOBD).length > 0 && (
+                <View style={styles.dateContainer}>
+                  <Text style={styles.dateTitlu}>📊 Date live:</Text>
+                  <View style={styles.dateGrid}>
+                    {Object.entries(dateOBD)
+                      .filter(([key]) => !['coduri', 'timestamp'].includes(key))
+                      .slice(0, 6)
+                      .map(([key, val]) => (
+                      <View key={key} style={styles.dateItem}>
+                        <Text style={styles.dateLabel}>{key}:</Text>
+                        <Text style={styles.dateValue}>
+                          {typeof val === 'number' ? val.toFixed(key === 'voltaj' || key === 'presiune_combustibil' || key === 'timp_injectie' ? 2 : 0) : val}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+              
+              <TouchableOpacity style={styles.butonSecundar} onPress={deconecteaza}>
+                <Icon name="bluetooth-off" size={20} color="#fff" />
+                <Text style={styles.butonSecundarText}>DECONECTEAZĂ</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* SECȚIUNE SIMPTOME */}
+        <View style={styles.sectiune}>
+          <Text style={styles.sectiuneTitlu}>🔍 Descriere simptome</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Ex: Motorul tremură la ralanti, consumă mult benzină..."
+            value={simptome}
+            onChangeText={setSimptome}
+            multiline
+            numberOfLines={3}
+          />
+        </View>
+
+        {/* SECȚIUNE INFORMATII MAȘINĂ */}
+        <View style={styles.sectiune}>
+          <Text style={styles.sectiuneTitlu}>🚗 Informații mașină</Text>
+          <View style={styles.row}>
+            <TextInput style={[styles.input, styles.halfInput]} placeholder="Marca" value={marca} onChangeText={setMarca} />
+            <TextInput style={[styles.input, styles.halfInput]} placeholder="Model" value={model} onChangeText={setModel} />
+          </View>
+          <View style={styles.row}>
+            <TextInput style={[styles.input, styles.halfInput]} placeholder="An" value={an} onChangeText={setAn} keyboardType="numeric" />
+            <TextInput style={[styles.input, styles.halfInput]} placeholder="Kilometraj" value={kilometraj} onChangeText={setKilometraj} keyboardType="numeric" />
+          </View>
+        </View>
+
+        {/* BUTON DIAGNOSTIC */}
+        <TouchableOpacity
+          style={[styles.butonDiagnostic, incarcare && styles.butonDisabled]}
+          onPress={trimiteLaAI}
+          disabled={incarcare || !simptome.trim()}
+        >
+          {incarcare ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Icon name="robot" size={26} color="#fff" />
+              <Text style={styles.butonDiagnosticText}>
+                {conectat ? '🤖 DIAGNOSTIC AI COMPLET' : '🧠 DIAGNOSTIC (fără date OBD)'}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* REZULTATE */}
+        {diagnostic && (
+          <View style={styles.rezultateContainer}>
+            <Text style={styles.rezultateTitlu}>📋 Rezultat Diagnostic</Text>
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitlu}>{diagnostic.probleme_probabile[0]?.componenta || 'Diagnostic'}</Text>
+                <View style={[styles.badge, diagnostic.nivel_urgenta === 'RIDICAT' && styles.badgeRidicat]}>
+                  <Text style={styles.badgeText}>{diagnostic.nivel_urgenta || 'MEDIU'}</Text>
+                </View>
+              </View>
+              <Text style={styles.cardDescriere}>{diagnostic.probleme_probabile[0]?.descriere || 'Nicio problemă'}</Text>
+              <View style={styles.stats}>
+                <View style={styles.stat}>
+                  <Text style={styles.statLabel}>ÎNCREDERE</Text>
+                  <Text style={styles.statValue}>{(diagnostic.scor_incredere * 100).toFixed(0)}%</Text>
+                </View>
+                <View style={styles.stat}>
+                  <Text style={styles.statLabel}>COST ESTIMAT</Text>
+                  <Text style={styles.statValue}>{diagnostic.cost_reparatie_estimat?.EUR || '?'} €</Text>
+                </View>
+              </View>
+              <Text style={styles.recomandariTitlu}>✅ Recomandări:</Text>
+              {diagnostic.actiuni_recomandate?.map((rec, idx) => (
+                <View key={idx} style={styles.recomandare}>
+                  <Icon name="check-circle" size={16} color="#10B981" />
+                  <Text style={styles.recomandareText}>{rec}</Text>
+                </View>
+              ))}
             </View>
           </View>
-          
-          <Text style={styles.sectionTitle}>📝 Plan acțiune recomandat:</Text>
-          {diagnosis.recommended_actions?.map((action, index) => (
-            <View key={index} style={styles.recommendationItem}>
-              <Text style={styles.recommendationNumber}>{index + 1}.</Text>
-              <Text style={styles.recommendationText}>{action}</Text>
-            </View>
-          ))}
-          
-          <TouchableOpacity style={styles.exportButton}>
-            <Text style={styles.exportButtonText}>📄 Exportă raport complet</Text>
-          </TouchableOpacity>
+        )}
+
+        {/* FOOTER */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
+            🔧 {MOD_DEZVOLTARE ? 'Development Build cu react-native-ble-plx' : 'Expo Go cu simulare completă'}
+          </Text>
+          <Text style={styles.versiune}>v1.0 • Auto Diagnostic AI</Text>
         </View>
-      )}
-
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>🚀 AutoDiagnostic AI Pro v3.0</Text>
-        <Text style={styles.footerSubtext}>
-          {isConnected 
-            ? '✅ Conectat la sistemul mașinii via OBD-II' 
-            : '🔌 Conectează-te la adaptorul OBD pentru diagnostic complet'}
-        </Text>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
-};
+}
 
+// === STILURI COMPLETE ===
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5', padding: 16 },
-  header: { alignItems: 'center', marginBottom: 24, paddingTop: 40 },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#2c3e50', textAlign: 'center' },
-  subtitle: { fontSize: 14, color: '#7f8c8d', marginTop: 4, textAlign: 'center' },
-  card: { 
-    backgroundColor: 'white', 
-    borderRadius: 15, 
-    padding: 20, 
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  cardTitle: { fontSize: 20, fontWeight: '700', marginBottom: 16, color: '#2c3e50' },
-  row: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  status: { 
-    fontWeight: 'bold', 
-    marginLeft: 8, 
-    paddingHorizontal: 12, 
-    paddingVertical: 6, 
-    borderRadius: 20, 
-    fontSize: 13,
-    textTransform: 'uppercase'
-  },
-  connected: { backgroundColor: '#d4edda', color: '#155724' },
-  disconnected: { backgroundColor: '#f8d7da', color: '#721c24' },
-  deviceInfo: { 
-    backgroundColor: '#e8f4fc', 
-    padding: 10, 
-    borderRadius: 8, 
-    marginBottom: 16,
-    color: '#2980b9',
-    fontWeight: '600'
-  },
-  button: { 
-    backgroundColor: '#3498db', 
-    padding: 18, 
-    borderRadius: 12, 
-    alignItems: 'center',
-    marginVertical: 8,
-    shadowColor: '#3498db',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  buttonSecondary: { backgroundColor: '#9b59b6' },
-  buttonSuccess: { backgroundColor: '#27ae60' },
-  buttonDanger: { backgroundColor: '#e74c3c' },
-  buttonDisabled: { backgroundColor: '#95a5a6', opacity: 0.7 },
-  buttonText: { 
-    color: 'white', 
-    fontWeight: '700', 
-    fontSize: 16,
-    textAlign: 'center'
-  },
-  devicesList: { marginTop: 20, borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 16 },
-  devicesTitle: { fontSize: 16, fontWeight: '600', marginBottom: 12, color: '#2c3e50' },
-  deviceItem: { 
-    backgroundColor: '#f8f9fa', 
-    padding: 15, 
-    borderRadius: 10, 
-    marginBottom: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: '#3498db'
-  },
-  deviceName: { fontSize: 16, fontWeight: '600', color: '#2c3e50' },
-  deviceType: { fontSize: 12, color: '#7f8c8d', marginTop: 4 },
-  obdDataContainer: { marginTop: 10 },
-  obdDataItem: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0'
-  },
-  obdDataParam: { fontSize: 16, fontWeight: '600', color: '#2c3e50', flex: 2 },
-  obdDataValue: { fontSize: 18, fontWeight: 'bold', color: '#27ae60', flex: 1, textAlign: 'right' },
-  obdDataNormal: { fontSize: 12, color: '#7f8c8d', flex: 1.5, textAlign: 'right' },
-  textInput: { 
-    borderWidth: 2, 
-    borderColor: '#e0e0e0', 
-    borderRadius: 12, 
-    padding: 16, 
-    fontSize: 16, 
-    minHeight: 120,
-    textAlignVertical: 'top',
-    backgroundColor: '#fafafa'
-  },
-  hint: { 
-    fontSize: 14, 
-    color: '#7f8c8d', 
-    fontStyle: 'italic', 
-    marginTop: 12,
-    lineHeight: 20
-  },
-  resultsCard: { 
-    backgroundColor: 'white', 
-    borderWidth: 3, 
-    borderColor: '#f1c40f',
-    shadowColor: '#f1c40f',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-  },
-  resultsTitle: { 
-    fontSize: 24, 
-    fontWeight: 'bold', 
-    color: '#2c3e50', 
-    marginBottom: 20, 
-    textAlign: 'center',
-    textTransform: 'uppercase'
-  },
-  urgencyBadge: { 
-    padding: 12, 
-    borderRadius: 25, 
-    alignSelf: 'center',
-    marginBottom: 20,
-    minWidth: 150
-  },
-  urgencyHigh: { backgroundColor: '#f8d7da', borderWidth: 2, borderColor: '#e74c3c' },
-  urgencyMedium: { backgroundColor: '#fff3cd', borderWidth: 2, borderColor: '#f1c40f' },
-  urgencyLow: { backgroundColor: '#d4edda', borderWidth: 2, borderColor: '#27ae60' },
-  urgencyText: { 
-    fontWeight: 'bold', 
-    color: '#2c3e50', 
-    textAlign: 'center',
-    fontSize: 16
-  },
-  confidence: { 
-    fontSize: 18, 
-    color: '#27ae60', 
-    fontWeight: '700', 
-    marginBottom: 25,
-    textAlign: 'center',
-    backgroundColor: '#f0f9f4',
-    padding: 12,
-    borderRadius: 10
-  },
-  sectionTitle: { 
-    fontSize: 18, 
-    fontWeight: '700', 
-    color: '#2c3e50', 
-    marginTop: 20, 
-    marginBottom: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: '#3498db',
-    paddingBottom: 6
-  },
-  issueItem: { 
-    backgroundColor: '#f8f9fa', 
-    padding: 16, 
-    borderRadius: 10, 
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e9ecef'
-  },
-  issueHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  issueComponent: { fontWeight: 'bold', fontSize: 17, color: '#2c3e50', flex: 1 },
-  issueConfidenceBadge: { 
-    backgroundColor: '#27ae60', 
-    color: 'white', 
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-    fontWeight: 'bold',
-    fontSize: 13
-  },
-  issueProblem: { 
-    color: '#e74c3c', 
-    fontSize: 15, 
-    marginBottom: 6,
-    fontWeight: '600'
-  },
-  issueDTC: { 
-    fontSize: 13, 
-    color: '#3498db', 
-    backgroundColor: '#e8f4fc',
-    padding: 6,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-    fontWeight: '600'
-  },
-  costContainer: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-around', 
-    backgroundColor: '#e8f4fc', 
-    padding: 20, 
-    borderRadius: 12,
-    marginVertical: 10
-  },
-  costItem: { alignItems: 'center' },
-  costValue: { fontSize: 24, fontWeight: 'bold', color: '#2980b9' },
-  costLabel: { fontSize: 14, color: '#7f8c8d', marginTop: 4 },
-  recommendationItem: { 
-    flexDirection: 'row', 
-    alignItems: 'flex-start',
-    marginBottom: 10,
-    backgroundColor: '#f8f9fa',
-    padding: 12,
-    borderRadius: 8
-  },
-  recommendationNumber: { 
-    backgroundColor: '#3498db', 
-    color: 'white', 
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    textAlign: 'center',
-    lineHeight: 28,
-    fontWeight: 'bold',
-    marginRight: 12,
-    marginTop: 2
-  },
-  recommendationText: { 
-    flex: 1, 
-    fontSize: 15, 
-    color: '#2c3e50',
-    lineHeight: 22
-  },
-  exportButton: { 
-    backgroundColor: '#2c3e50', 
-    padding: 16, 
-    borderRadius: 10, 
-    alignItems: 'center',
-    marginTop: 25,
-    marginBottom: 10
-  },
-  exportButtonText: { 
-    color: 'white', 
-    fontWeight: 'bold', 
-    fontSize: 16,
-    textTransform: 'uppercase'
-  },
-  footer: { 
-    alignItems: 'center', 
-    marginTop: 30, 
-    marginBottom: 40, 
-    padding: 20,
-    backgroundColor: '#2c3e50',
-    borderRadius: 15
-  },
-  footerText: { color: '#ecf0f1', fontWeight: 'bold', fontSize: 16, textAlign: 'center' },
-  footerSubtext: { 
-    color: '#bdc3c7', 
-    fontSize: 14, 
-    textAlign: 'center', 
-    marginTop: 8,
-    fontStyle: 'italic',
-    lineHeight: 20
-  },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
+  header: { alignItems: 'center', padding: 24, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  titlu: { fontSize: 32, fontWeight: '900', color: '#1e293b', marginTop: 12 },
+  subtitlu: { fontSize: 16, color: '#64748b', marginBottom: 16 },
+  stareContainer: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  stareText: { fontSize: 18, fontWeight: '800' },
+  stareDetalii: { fontSize: 14, color: '#64748b', marginTop: 4 },
+  sectiune: { backgroundColor: '#fff', margin: 16, padding: 20, borderRadius: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  sectiuneTitlu: { fontSize: 20, fontWeight: '800', color: '#1e293b', marginBottom: 16 },
+  butonPrincipal: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#3B82F6', paddingVertical: 16, paddingHorizontal: 24, borderRadius: 12, gap: 12 },
+  butonActiv: { backgroundColor: '#1d4ed8' },
+  butonText: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  notaContainer: { backgroundColor: '#f0f9ff', padding: 16, borderRadius: 12, marginTop: 20, borderLeftWidth: 4, borderLeftColor: '#0ea5e9' },
+  notaText: { fontSize: 14, color: '#0369a1', marginBottom: 6, lineHeight: 20 },
+  listaContainer: { marginTop: 20 },
+  listaTitlu: { fontSize: 16, fontWeight: '700', color: '#475569', marginBottom: 12 },
+  dispozitivItem: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#f8fafc', borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#e2e8f0' },
+  dispozitivInfo: { flex: 1, marginLeft: 14 },
+  dispozitivNume: { fontSize: 16, fontWeight: '700', color: '#1e293b', marginBottom: 4 },
+  dispozitivDetalii: { fontSize: 13, color: '#64748b' },
+  conectatContainer: { marginTop: 20 },
+  conectatHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  conectatInfo: { marginLeft: 12 },
+  conectatTitlu: { fontSize: 14, fontWeight: '800', color: '#10B981', letterSpacing: 0.5 },
+  conectatNume: { fontSize: 18, fontWeight: '700', color: '#1e293b', marginTop: 4 },
+  dateContainer: { backgroundColor: '#f8fafc', padding: 18, borderRadius: 12, marginBottom: 20, borderWidth: 1, borderColor: '#e2e8f0' },
+  dateTitlu: { fontSize: 16, fontWeight: '700', color: '#334155', marginBottom: 14 },
+  dateGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  dateItem: { width: '48%', backgroundColor: '#fff', padding: 14, borderRadius: 10, marginBottom: 12, borderWidth: 1, borderColor: '#f1f5f9' },
+  dateLabel: { fontSize: 12, fontWeight: '600', color: '#64748b', marginBottom: 6 },
+  dateValue: { fontSize: 22, fontWeight: '800', color: '#1e293b' },
+  butonSecundar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ef4444', paddingVertical: 16, paddingHorizontal: 24, borderRadius: 12, gap: 10 },
+  butonSecundarText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  input: { borderWidth: 1.5, borderColor: '#cbd5e1', borderRadius: 12, padding: 16, fontSize: 16, backgroundColor: '#f8fafc', color: '#334155' },
+  row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  halfInput: { flex: 0.48 },
+  butonDiagnostic: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#8b5cf6', paddingVertical: 20, paddingHorizontal: 24, borderRadius: 14, gap: 12, marginHorizontal: 16, marginVertical: 10, shadowColor: '#8b5cf6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 5 },
+  butonDisabled: { backgroundColor: '#a78bfa', opacity: 0.8 },
+  butonDiagnosticText: { color: '#fff', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
+  rezultateContainer: { backgroundColor: '#fff', marginHorizontal: 16, marginVertical: 10, padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#f1f5f9' },
+  rezultateTitlu: { fontSize: 24, fontWeight: '900', color: '#1e293b', marginBottom: 20 },
+  card: { backgroundColor: '#f8fafc', padding: 20, borderRadius: 14, borderWidth: 1.5, borderColor: '#e2e8f0', marginBottom: 20 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  cardTitlu: { fontSize: 20, fontWeight: '800', color: '#1e40af', flex: 1 },
+  badge: { paddingVertical: 6, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#fef3c7' },
+  badgeRidicat: { backgroundColor: '#fee2e2' },
+  badgeText: { fontSize: 13, fontWeight: '800', color: '#92400e' },
+  cardDescriere: { fontSize: 16, color: '#475569', lineHeight: 24, marginBottom: 20 },
+  stats: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
+  stat: { alignItems: 'center', flex: 1 },
+  statLabel: { fontSize: 14, fontWeight: '700', color: '#64748b', marginBottom: 8 },
+  statValue: { fontSize: 28, fontWeight: '900', color: '#1e293b' },
+  recomandariTitlu: { fontSize: 18, fontWeight: '800', color: '#475569', marginBottom: 12 },
+  recomandare: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
+  recomandareText: { fontSize: 15, color: '#334155', marginLeft: 12, flex: 1, lineHeight: 22 },
+  footer: { padding: 24, paddingTop: 30, alignItems: 'center' },
+  footerText: { fontSize: 15, color: '#64748b', textAlign: 'center', lineHeight: 22, marginBottom: 12 },
+  versiune: { fontSize: 13, color: '#94a3b8', fontWeight: '600' },
 });
-
-export default App;

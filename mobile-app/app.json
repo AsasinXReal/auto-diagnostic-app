@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "AutoDiagnostic Pro",
-    "slug": "autodiagnostic-pro",
+    "name": "AI Auto Diagnostic",
+    "slug": "auto-diagnostic-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -9,65 +9,51 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#3B82F6"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.auto.diagnostic",
       "infoPlist": {
-        "NSBluetoothAlwaysUsageDescription": "Această aplicație necesită Bluetooth pentru a se conecta la adaptorul OBD-II al mașinii",
-        "NSBluetoothPeripheralUsageDescription": "Această aplicație necesită Bluetooth pentru a se conecta la adaptorul OBD-II al mașinii",
-        "UIBackgroundModes": ["bluetooth-central"]
-      },
-      "bundleIdentifier": "com.autodiagnostic.app"
+        "NSBluetoothAlwaysUsageDescription": "Pentru conectarea la adaptor OBD2 Bluetooth",
+        "NSBluetoothPeripheralUsageDescription": "Pentru conectarea la adaptor OBD2 Bluetooth",
+        "UIBackgroundModes": [
+          "bluetooth-central"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#3B82F6"
       },
       "permissions": [
         "android.permission.BLUETOOTH",
-        "android.permission.BLUETOOTH_ADMIN", 
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.BLUETOOTH_ADMIN",
         "android.permission.BLUETOOTH_SCAN",
         "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.BLUETOOTH_ADVERTISE"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ],
-      "usesPermissions": [
-        {
-          "name": "android.permission.BLUETOOTH",
-          "maxSdkVersion": 30
-        },
-        {
-          "name": "android.permission.BLUETOOTH_ADMIN",
-          "maxSdkVersion": 30
-        }
-      ],
-      "package": "com.autodiagnostic.app"
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
+      "package": "com.auto.diagnostic"
     },
     "plugins": [
       [
-        "expo-build-properties",
+        "expo-location",
         {
-          "android": {
-            "minSdkVersion": 24,
-            "compileSdkVersion": 35,
-            "targetSdkVersion": 35,
-            "buildToolsVersion": "34.0.0"
-          },
-          "ios": {
-            "deploymentTarget": "15.1"
-          }
+          "locationAlwaysAndWhenInUsePermission": "Permite $(PRODUCT_NAME) să folosească locația pentru Bluetooth."
         }
-      ]
+      ],
+      "expo-asset"
     ],
+    "extra": {
+      "eas": {
+        "projectId": "auto-diagnostic-app"
+      }
+    },
     "newArchEnabled": false
   }
 }
