@@ -237,7 +237,7 @@ export default function AplicatieDiagnostic() {
         }
       };
 
-      const raspuns = await axios.post('http://192.168.0.195:8000/api/v1/diagnostic', dateDiagnostic);
+      const raspuns = await axios.post('http://192.168.1.235:8000/api/v1/diagnostic', dateDiagnostic);
       
       setDiagnostic(raspuns.data);
       await AsyncStorage.setItem('ultim_diagnostic', JSON.stringify(raspuns.data));
