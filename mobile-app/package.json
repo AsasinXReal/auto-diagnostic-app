@@ -9,26 +9,32 @@
     "web": "expo start --web"
   },
   "dependencies": {
-    "@react-native-async-storage/async-storage": "^2.2.0",
-    "axios": "^1.13.2",
-    "expo": "~54.0.0",
-    "expo-application": "~7.0.8",
-    "expo-asset": "~12.0.12",
-    "expo-bluetooth": "^0.0.0",
-    "expo-device": "~8.0.10",
-    "expo-location": "~19.0.8",
-    "expo-splash-screen": "~31.0.13",
-    "expo-status-bar": "~3.0.9",
-    "expo-system-ui": "~6.0.9",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "axios": "1.13.2",
+    "buffer": "6.0.3",
+    "expo": "~54.0.31",
+    "expo-application": "7.0.8",
+    "expo-asset": "12.0.12",
+    "expo-device": "8.0.10",
+    "expo-location": "19.0.8",
+    "expo-splash-screen": "31.0.13",
+    "expo-status-bar": "3.0.9",
+    "expo-system-ui": "6.0.9",
     "react": "19.1.0",
     "react-native": "0.81.5",
-    "react-native-ble-plx": "^3.5.0",
-    "react-native-reanimated": "~4.1.1",
-    "react-native-vector-icons": "^10.3.0"
+    "react-native-ble-plx": "3.5.0",
+    "react-native-dotenv": "^3.4.11",
+    "react-native-permissions": "4.1.5",
+    "react-native-reanimated": "4.1.1",
+    "react-native-svg": "^15.12.1",
+    "react-native-svg-transformer": "^1.5.2",
+    "react-native-vector-icons": "10.3.0",
+    "socket.io-client": "4.7.2"
   },
   "devDependencies": {
-    "@babel/core": "^7.25.2",
-    "babel-preset-expo": "~54.0.9"
+    "@babel/core": "^7.26.0",
+    "@config-plugins/react-native-ble-plx": "^7.0.0",
+    "babel-preset-expo": "54.0.9"
   },
   "private": true
 }
