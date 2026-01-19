@@ -21,7 +21,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Buffer } from 'buffer';
-import BleManager from 'react-native-ble-manager';
+import { BleManager } from 'react-native-ble-plx';
 
 // Configurare
 const API_URL = 'http://192.168.1.146:8000';
